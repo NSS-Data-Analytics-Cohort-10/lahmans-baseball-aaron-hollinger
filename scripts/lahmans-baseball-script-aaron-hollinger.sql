@@ -78,24 +78,49 @@ ORDER BY total_putouts DESC
 SELECT yearid
 FROM teams
 
-SELECT SUM(SO + SOA) / sum_strikeouts
-FROM teams
 
-SELECT DATE_PART('decade',CAST(yearid AS varchar)::date,'YYYY'),
-SUM(SO + SOA)/SUM(G) AS avg_strikeouts
+SELECT ROUND(SUM(SO + SOA)/SUM(G),2) AS avg_strikeouts, ROUND(SUM(HR + HRA)/SUM(G),2) AS avg_homeruns, yearid  
 FROM teams
-GROUP BY DATE_PART('decade',CAST(yearid AS varchar)::date,'YYYY')
+GROUP BY yearid
+ORDER BY yearid ASC
 
-SELECT yearid, 
-SUM(SO + SOA)/SUM(G) AS avg_strikeouts
+--second attempt
+
+WITH decade AS (
+	SELECT
+		EXTRACT('decade' FROM MAKE_DATE(yearid, 1, 1)) 
+	FROM teams
+)
+SELECT ROUND(SUM(SO + SOA)/SUM(G),2) AS avg_strikeouts, ROUND(SUM(HR + HRA)/SUM(G),2) AS avg_homeruns, yearid
 FROM teams
 GROUP BY yearid
 
+---third attempt
 
-SELECT SUM(p.SO + b.SO) AS sum_SO
-FROM pitching AS p
-LEFT JOIN batting AS b
-USING (playerID)
+SELECT ROUND(SUM(SOA)/SUM(G),2) AS avg_strikeouts, ROUND(SUM(HRA)/SUM(G),2) AS avg_homeruns, (EXTRACT('decade' FROM MAKE_DATE(yearid, 1, 1)) * 10)::int AS decade
+FROM teams
+GROUP BY decade
+ORDER BY decade ASC
+
+SELECT ROUND(SUM(SOA)/SUM(G),2) AS avg_strikeouts, ROUND(SUM(HRA)/SUM(G),2) AS avg_homeruns, (EXTRACT('decade' FROM MAKE_DATE(yearid, 1, 1)) * 10)::int AS decade
+FROM teams
+GROUP BY decade
+ORDER BY decade ASC
+
+SELECT
+    TO_CHAR(SUM(SOA)::numeric / SUM(G)::numeric, 'FM999999999.00') AS avg_strikeouts,
+    TO_CHAR(SUM(HRA)::numeric / SUM(G)::numeric, 'FM999999999.00') AS avg_homeruns,
+    (EXTRACT('decade' FROM MAKE_DATE(yearid, 1, 1)) * 10)::int AS decade
+FROM teams
+GROUP BY decade
+ORDER BY decade ASC;
+
+SELECT ROUND(SUM(pitching.SO + batting.SO)/SUM(pitching.G),2) AS avg_strikeouts, ROUND(SUM(pitching.HR)/SUM(batting.HR),2) AS avg_homeruns, (EXTRACT('decade' FROM MAKE_DATE(pitching.yearid, 1, 1)) * 10)::int AS decade
+FROM pitching
+LEFT JOIN batting
+USING (playerid)
+GROUP BY decade
+ORDER BY decade ASC
 
    
 --6. Find the player who had the most success stealing bases in 2016, where __success__ is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted _at least_ 20 stolen bases.
@@ -161,7 +186,9 @@ USING (park)
 WHERE games > 10 AND year = 2016
 GROUP BY team, park_name, games																	 
 ORDER BY avg_attendance DESC
-LIMIT 5;																		 
+LIMIT 5;
+																	 
+--Answer in descending order: LAN, SLN, TOR, SFN, CHN
 																	 
 SELECT team, park_name, games, SUM(attendance) AS attendance, SUM(attendance)/SUM(games) AS avg_attendance
 FROM homegames
@@ -172,22 +199,75 @@ GROUP BY team, park_name, games
 ORDER BY avg_attendance ASC
 LIMIT 5;
 														 
-																
---9. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
+--Answer in ascending order: TBA, OAK, CLE, MIA, CHA
+																	 
+-- 9. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
 
---10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
+SELECT awardsmanagers.lgid, awardsmanagers.yearid, tie
+FROM awardsmanagers
+LEFT JOIN managers
+USING (playerid)
+LEFT JOIN people
+USING (playerid)
+WHERE awardid LIKE 'TSN Manager of the Year'
 
+WITH both_leagues AS (
+																	
+WITH team_name AS (
+	SELECT playerid, managers.yearid, name,
+	CASE 
+		WHEN awardid = 'TSN Manager of the Year' THEN 'Won'
+	ELSE 'no'
+	END AS won_award
+	FROM awardsmanagers
+	LEFT JOIN teams
+	USING ()
+)	
+	
+SELECT namefirst, namelast, awardid, playerid, awardsmanagers.lgid, awardsmanagers.yearid, tie
+FROM awardsmanagers
+LEFT JOIN managers
+USING (playerid)
+LEFT JOIN people
+USING (playerid)
+GROUP BY namefirst, namelast, awardid, playerid, awardsmanagers.lgid, awardsmanagers.yearid, tie
+HAVING awardid LIKE 'TSN Manager of the Year'
+ORDER BY yearid DESC	
 
---**Open-ended questions**
+SELECT playerid, COUNT(playerid) AS playerid_count
+FROM awardsmanagers
+WHERE awardid LIKE 'TSN Manager of the Year'
+GROUP BY playerid
+ORDER BY playerid ASC
 
---11. Is there any correlation between number of wins and team salary? Use data from 2000 and later to answer this question. As you do this analysis, keep in mind that salaries across the whole league tend to increase together, so you may want to look on a year-by-year basis.
+	
+SELECT playerid, COUNT(playerid) AS count_id, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid				
+FROM awardsmanagers
+LEFT JOIN managers
+USING (playerid, yearid)
+LEFT JOIN people
+USING (playerid)
+LEFT JOIN teams
+USING (teamid, yearid)
+GROUP BY playerid, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid
+HAVING awardid LIKE 'TSN Manager of the Year'
+ORDER BY count_id DESC
+																															
+SELECT MAKE_DATE(yearid, 1, 1) AS year				
+FROM managershalf
+GROUP BY yearid
+ORDER BY yearid DESC
+											
 
---12. In this question, you will explore the connection between number of wins and attendance.
+-- 10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
 
---Does there appear to be any correlation between attendance at home games and number of wins?
-
---Do teams that win the world series see a boost in attendance the following year? What about teams that made the playoffs? Making the playoffs means either being a division winner or a wild card winner.
-
---13. It is thought that since left-handed pitchers are more rare, causing batters to face them less often, that they are more effective. Investigate this claim and present evidence to either support or dispute this claim. First, determine just how rare left-handed pitchers are compared with right-handed pitchers. Are left-handed pitchers more likely to win the Cy Young Award? Are they more likely to make it into the hall of fame?
-
-  
+	
+	
+	
+SELECT namefirst, namelast, appearances.yearid, G_all
+FROM batting
+LEFT JOIN people
+USING (playerid)
+LEFT JOIN appearances
+USING (playerid)
+	
