@@ -137,29 +137,34 @@ ORDER BY percentage_stolen DESC
 
 --7.  From 1970 – 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion – determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
 
-SELECT COUNT(teamid)
+WITH maxw_wswin AS 
+(SELECT MAX(W)
 FROM   teams
-WHERE  WSWIN  = 'Y'
-  AND  W = (select max(W)
-                  from   teams
-                  where  WSWin = 'Y'
-                )
+WHERE  WSWIN  = 'Y')
+
 
 
 SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses
 FROM teams
-WHERE yearid >= 1970 AND WSWin = 'N' yearid NOT LIKE '1981' AND W = (SELECT MAX(W)
 GROUP BY name, yearid, WSWin
-ORDER BY wins DESC
-
-SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses
-FROM teams
 HAVING yearid >= 1970 AND WSWin = 'Y' AND yearid != '1981'
-GROUP BY name, yearid, WSWin
 ORDER BY wins ASC
-																	 
+
 SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses
 FROM teams
+GROUP BY name, yearid, WSWin
+HAVING yearid >= 1970 AND yearid != '1981'
+ORDER BY WsWin ASC
+																	 
+SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses,
+CASE WHEN WSWin = 'Y' THEN 'WS_Y'
+WHEN WSWin = 'N' THEN 'WS_N'
+END AS WS_Y_N
+FROM teams
+WHERE yearid >= 1970 AND yearid <= 2016
+GROUP BY name, yearid, WSWin 
+
+																	 
 WHERE yearid >= 1970															 
 	AND (name, yearid) IN (
 		SELECT name, yearid
@@ -203,45 +208,55 @@ LIMIT 5;
 																	 
 -- 9. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
 
-SELECT awardsmanagers.lgid, awardsmanagers.yearid, tie
+WITH NL_Wins AS (
+    SELECT
+        playerid,
+        COUNT(*) AS NL_count
+    FROM
+        awardsmanagers
+    WHERE
+        awardid = 'TSN Manager of the Year' AND lgid = 'NL'
+    GROUP BY
+        playerid
+),
+	AL_Wins AS (
+    SELECT
+        playerid,
+        COUNT(*) AS AL_count
+    FROM
+        awardsmanagers
+    WHERE
+        awardid = 'TSN Manager of the Year' AND lgid = 'AL'
+    GROUP BY
+        playerid
+)
+SELECT awardsmanagers.playerid, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid,
+CASE
+        WHEN NL_Wins.NL_count > 0 AND AL_Wins.AL_count > 0 THEN 'Both Leagues'
+        ELSE 'Single League'
+    END AS WinType
 FROM awardsmanagers
 LEFT JOIN managers
-USING (playerid)
+USING (playerid, yearid)
 LEFT JOIN people
 USING (playerid)
-WHERE awardid LIKE 'TSN Manager of the Year'
+LEFT JOIN teams
+USING (teamid, yearid)
+LEFT JOIN
+    NL_Wins
+ON
+    awardsmanagers.playerid = NL_Wins.playerid
+LEFT JOIN
+    AL_Wins
+ON
+    awardsmanagers.playerid = AL_Wins.playerid
+GROUP BY awardsmanagers.playerid, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid, nl_wins.nl_count, al_wins.al_count
+HAVING awardid LIKE 'TSN Manager of the Year' AND (awardsmanagers.lgid = 'NL' OR awardsmanagers.lgid = 'AL')
+ORDER BY wintype ASC
 
-WITH both_leagues AS (
-																	
-WITH team_name AS (
-	SELECT playerid, managers.yearid, name,
-	CASE 
-		WHEN awardid = 'TSN Manager of the Year' THEN 'Won'
-	ELSE 'no'
-	END AS won_award
-	FROM awardsmanagers
-	LEFT JOIN teams
-	USING ()
-)	
-	
-SELECT namefirst, namelast, awardid, playerid, awardsmanagers.lgid, awardsmanagers.yearid, tie
-FROM awardsmanagers
-LEFT JOIN managers
-USING (playerid)
-LEFT JOIN people
-USING (playerid)
-GROUP BY namefirst, namelast, awardid, playerid, awardsmanagers.lgid, awardsmanagers.yearid, tie
-HAVING awardid LIKE 'TSN Manager of the Year'
-ORDER BY yearid DESC	
+--Answer: Davey Johnson	won both - won AL managing Baltimore Oriorles and NL managing Washinton Nationals, Jim Leyland also won both, won AL managing Detroit Tigers and NL managing Pittsburgh Pirates.
 
-SELECT playerid, COUNT(playerid) AS playerid_count
-FROM awardsmanagers
-WHERE awardid LIKE 'TSN Manager of the Year'
-GROUP BY playerid
-ORDER BY playerid ASC
-
-	
-SELECT playerid, COUNT(playerid) AS count_id, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid				
+SELECT playerid, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid,
 FROM awardsmanagers
 LEFT JOIN managers
 USING (playerid, yearid)
@@ -250,24 +265,60 @@ USING (playerid)
 LEFT JOIN teams
 USING (teamid, yearid)
 GROUP BY playerid, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid
-HAVING awardid LIKE 'TSN Manager of the Year'
-ORDER BY count_id DESC
-																															
-SELECT MAKE_DATE(yearid, 1, 1) AS year				
-FROM managershalf
-GROUP BY yearid
-ORDER BY yearid DESC
-											
-
+HAVING awardid LIKE 'TSN Manager of the Year' AND (awardsmanagers.lgid = 'NL' OR awardsmanagers.lgid = 'AL')
+ORDER BY playerid DESC
+						
 -- 10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
-
 	
-	
-	
-SELECT namefirst, namelast, appearances.yearid, G_all
+WITH number_years AS 
+(
+	SELECT playerid,
+	COUNT(DISTINCT yearid) AS distinct_years
+	FROM appearances
+	GROUP BY playerid
+),
+homeruns_2016 AS
+(
+	SELECT playerid,
+	SUM(HR) AS sum_hr
+	FROM batting
+	WHERE yearid = '2016' AND HR > 1
+	GROUP BY playerid
+),
+homeruns_pre_2016 AS
+(
+	SELECT playerid,
+	MAX(HR) AS max_hr_pre_2016
+	FROM batting
+	WHERE yearid < 2016
+	GROUP BY playerid
+)
+SELECT playerid, namefirst, namelast, appearances.yearid, G_all, hr, distinct_years, sum_hr, max_hr_pre_2016
 FROM batting
 LEFT JOIN people
 USING (playerid)
 LEFT JOIN appearances
+USING (playerid, yearid)
+LEFT JOIN number_years
 USING (playerid)
-	
+LEFT JOIN homeruns_2016
+USING (playerid)
+LEFT JOIN homeruns_pre_2016
+USING (playerid)
+WHERE distinct_years >= 10 AND sum_hr IS NOT NULL
+ORDER BY namelast DESC, yearid ASC
+
+
+SELECT playerid, namefirst, namelast, yearid, hr
+FROM batting
+LEFT JOIN people
+USING (playerid)
+WHERE playerid = 'vottojo01' 
+GROUP BY playerid, namefirst, namelast, yearid, hr
+ORDER BY yearid ASC
+
+
+
+
+
+
