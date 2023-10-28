@@ -71,58 +71,25 @@ CASE
 	WHEN pos = 'P' THEN 'Battery'
 	WHEN pos = 'C' THEN 'Battery'
 	END
-ORDER BY total_putouts DESC
+ORDER BY total_putouts 
+
+/*Answer: Infield - Total Putouts: 58,934
+Answer: Battery - Total Putouts: 41,424
+Answer: Outfield - Total Putouts: 29,560
+*/
 
 --5. Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. Do you see any trends?
 
-SELECT yearid
-FROM teams
-
-
-SELECT ROUND(SUM(SO + SOA)/SUM(G),2) AS avg_strikeouts, ROUND(SUM(HR + HRA)/SUM(G),2) AS avg_homeruns, yearid  
-FROM teams
-GROUP BY yearid
-ORDER BY yearid ASC
-
---second attempt
-
-WITH decade AS (
-	SELECT
-		EXTRACT('decade' FROM MAKE_DATE(yearid, 1, 1)) 
-	FROM teams
-)
-SELECT ROUND(SUM(SO + SOA)/SUM(G),2) AS avg_strikeouts, ROUND(SUM(HR + HRA)/SUM(G),2) AS avg_homeruns, yearid
-FROM teams
-GROUP BY yearid
-
----third attempt
-
-SELECT ROUND(SUM(SOA)/SUM(G),2) AS avg_strikeouts, ROUND(SUM(HRA)/SUM(G),2) AS avg_homeruns, (EXTRACT('decade' FROM MAKE_DATE(yearid, 1, 1)) * 10)::int AS decade
-FROM teams
-GROUP BY decade
-ORDER BY decade ASC
-
-SELECT ROUND(SUM(SOA)/SUM(G),2) AS avg_strikeouts, ROUND(SUM(HRA)/SUM(G),2) AS avg_homeruns, (EXTRACT('decade' FROM MAKE_DATE(yearid, 1, 1)) * 10)::int AS decade
-FROM teams
-GROUP BY decade
-ORDER BY decade ASC
-
 SELECT
     TO_CHAR(SUM(SOA)::numeric / SUM(G)::numeric, 'FM999999999.00') AS avg_strikeouts,
-    TO_CHAR(SUM(HRA)::numeric / SUM(G)::numeric, 'FM999999999.00') AS avg_homeruns,
+    TO_CHAR(SUM(R)::numeric / SUM(G)::numeric, 'FM999999999.00') AS avg_runs,
     (EXTRACT('decade' FROM MAKE_DATE(yearid, 1, 1)) * 10)::int AS decade
 FROM teams
 GROUP BY decade
-ORDER BY decade ASC;
-
-SELECT ROUND(SUM(pitching.SO + batting.SO)/SUM(pitching.G),2) AS avg_strikeouts, ROUND(SUM(pitching.HR)/SUM(batting.HR),2) AS avg_homeruns, (EXTRACT('decade' FROM MAKE_DATE(pitching.yearid, 1, 1)) * 10)::int AS decade
-FROM pitching
-LEFT JOIN batting
-USING (playerid)
-GROUP BY decade
 ORDER BY decade ASC
 
-   
+--Answer: Strikeouts have increased significantly since the 1870s
+
 --6. Find the player who had the most success stealing bases in 2016, where __success__ is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted _at least_ 20 stolen bases.
 
 SELECT namefirst, namelast, SUM(SB)*100/SUM(SB+CS) AS percentage_stolen
@@ -137,18 +104,48 @@ ORDER BY percentage_stolen DESC
 
 --7.  From 1970 – 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion – determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
 
-WITH maxw_wswin AS 
-(SELECT MAX(W)
-FROM   teams
-WHERE  WSWIN  = 'Y')
+WITH WS_max_wins AS (
+    SELECT
+        yearid, 
+        MAX(W) AS ws_wins
+    FROM
+        teams
+    WHERE
+        WSWin = 'Y'
+    GROUP BY
+        name
+)
+WITH WS_max_wins AS (
+    SELECT
+        yearid, 
+        MAX(W) AS ws_wins
+    FROM
+        teams
+    WHERE
+        WSWin = 'Y'
+    GROUP BY
+        name
+)
+SELECT yearid, WSWin, MAX(W) AS wins, MAX(L) AS losses
+FROM teams
+GROUP BY yearid, WSWin, W
+HAVING yearid >= 1970 AND WSWin = 'N' AND yearid != '1981' AND yearid !=1994
+ORDER BY test DESC
 
 
+SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses, ws_wins
+FROM teams
+LEFT JOIN ws_max_wins
+USING(name)
+GROUP BY name, yearid, WSWin, ws_wins
+HAVING yearid >= 1970 AND WSWin = 'N' AND yearid != '1981' AND yearid !=1994
+ORDER BY wins DESC
 
 SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses
 FROM teams
 GROUP BY name, yearid, WSWin
-HAVING yearid >= 1970 AND WSWin = 'Y' AND yearid != '1981'
-ORDER BY wins ASC
+HAVING yearid >= 1970 AND yearid != '1981' AND yearid !=1994 AND WSWin = 'N'
+ORDER BY wins DESC
 
 SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses
 FROM teams
@@ -254,7 +251,7 @@ GROUP BY awardsmanagers.playerid, namefirst, namelast, awardid, teamid, awardsma
 HAVING awardid LIKE 'TSN Manager of the Year' AND (awardsmanagers.lgid = 'NL' OR awardsmanagers.lgid = 'AL')
 ORDER BY wintype ASC
 
---Answer: Davey Johnson	won both - won AL managing Baltimore Oriorles and NL managing Washinton Nationals, Jim Leyland also won both, won AL managing Detroit Tigers and NL managing Pittsburgh Pirates.
+--Answer: Davey Johnson	won both - won AL managing Baltimore Orioles and NL managing Washinton Nationals, Jim Leyland also won both, won AL managing Detroit Tigers and NL managing Pittsburgh Pirates.
 
 SELECT playerid, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid,
 FROM awardsmanagers
@@ -269,7 +266,7 @@ HAVING awardid LIKE 'TSN Manager of the Year' AND (awardsmanagers.lgid = 'NL' OR
 ORDER BY playerid DESC
 						
 -- 10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
-	
+
 WITH number_years AS 
 (
 	SELECT playerid,
@@ -277,10 +274,10 @@ WITH number_years AS
 	FROM appearances
 	GROUP BY playerid
 ),
-homeruns_2016 AS
+homeruns_in_2016 AS
 (
 	SELECT playerid,
-	SUM(HR) AS sum_hr
+	SUM(HR) AS hr_in_2016
 	FROM batting
 	WHERE yearid = '2016' AND HR > 1
 	GROUP BY playerid
@@ -293,7 +290,7 @@ homeruns_pre_2016 AS
 	WHERE yearid < 2016
 	GROUP BY playerid
 )
-SELECT playerid, namefirst, namelast, appearances.yearid, G_all, hr, distinct_years, sum_hr, max_hr_pre_2016
+SELECT playerid, namefirst, namelast, appearances.yearid, hr, distinct_years, max_hr_pre_2016, hr_in_2016
 FROM batting
 LEFT JOIN people
 USING (playerid)
@@ -301,24 +298,15 @@ LEFT JOIN appearances
 USING (playerid, yearid)
 LEFT JOIN number_years
 USING (playerid)
-LEFT JOIN homeruns_2016
+LEFT JOIN homeruns_in_2016
 USING (playerid)
 LEFT JOIN homeruns_pre_2016
 USING (playerid)
-WHERE distinct_years >= 10 AND sum_hr IS NOT NULL
-ORDER BY namelast DESC, yearid ASC
+WHERE distinct_years >= 10 AND hr_in_2016 IS NOT NULL AND (hr_in_2016 > max_hr_pre_2016) AND yearid = 2016
+GROUP BY playerid, namefirst, namelast, appearances.yearid, hr, distinct_years, max_hr_pre_2016, hr_in_2016
+ORDER BY playerid DESC
 
-
-SELECT playerid, namefirst, namelast, yearid, hr
-FROM batting
-LEFT JOIN people
-USING (playerid)
-WHERE playerid = 'vottojo01' 
-GROUP BY playerid, namefirst, namelast, yearid, hr
-ORDER BY yearid ASC
-
-
-
-
-
-
+/*Answer: *Angel Pagan: 12 HR in 2016
+Mike Napoli: 34 HR in 2016
+Rajai Davis: 12 HR in 2016
+Robinson Cano: 39 HR in 2016
