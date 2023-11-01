@@ -104,42 +104,7 @@ ORDER BY percentage_stolen DESC
 
 --7.  From 1970 – 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion – determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
 
-WITH WS_max_wins AS (
-    SELECT
-        yearid, 
-        MAX(W) AS ws_wins
-    FROM
-        teams
-    WHERE
-        WSWin = 'Y'
-    GROUP BY
-        name
-)
-WITH WS_max_wins AS (
-    SELECT
-        yearid, 
-        MAX(W) AS ws_wins
-    FROM
-        teams
-    WHERE
-        WSWin = 'Y'
-    GROUP BY
-        name
-)
-SELECT yearid, WSWin, MAX(W) AS wins, MAX(L) AS losses
-FROM teams
-GROUP BY yearid, WSWin, W
-HAVING yearid >= 1970 AND WSWin = 'N' AND yearid != '1981' AND yearid !=1994
-ORDER BY test DESC
-
-
-SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses, ws_wins
-FROM teams
-LEFT JOIN ws_max_wins
-USING(name)
-GROUP BY name, yearid, WSWin, ws_wins
-HAVING yearid >= 1970 AND WSWin = 'N' AND yearid != '1981' AND yearid !=1994
-ORDER BY wins DESC
+--Most wins but did not win WS:
 
 SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses
 FROM teams
@@ -147,37 +112,123 @@ GROUP BY name, yearid, WSWin
 HAVING yearid >= 1970 AND yearid != '1981' AND yearid !=1994 AND WSWin = 'N'
 ORDER BY wins DESC
 
+--Answer: Seatlle Mariners in 2001
+
+--Fewest wins but did win WS:
+
 SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses
 FROM teams
 GROUP BY name, yearid, WSWin
-HAVING yearid >= 1970 AND yearid != '1981'
-ORDER BY WsWin ASC
-																	 
-SELECT name, yearid, WSWin, SUM(W) AS wins, SUM(L) AS losses,
-CASE WHEN WSWin = 'Y' THEN 'WS_Y'
-WHEN WSWin = 'N' THEN 'WS_N'
-END AS WS_Y_N
-FROM teams
-WHERE yearid >= 1970 AND yearid <= 2016
-GROUP BY name, yearid, WSWin 
+HAVING yearid >= 1970 AND yearid != '1981' AND yearid !=1994 AND WSWin = 'Y'
+ORDER BY wins ASC
 
-																	 
-WHERE yearid >= 1970															 
-	AND (name, yearid) IN (
-		SELECT name, yearid
-		FROM teams
-		WHERE WSWin = 'Y'
-      )						 
-GROUP BY name, yearid, WSWin, W
-HAVING W = MAX(W)
-ORDER BY wins ASC;
-																	 
-																	 
-SELECT COUNT(*) AS wins_world_series
+--Answer: St. Louis Cardinals in 2006
+
+--Percentage Script:
+
+WITH WS_max_wins AS (
+    SELECT
+        yearid, 
+        MAX(W) AS ws_wins
+    FROM
+        teams
+    WHERE
+        WSWin = 'Y'
+    GROUP BY
+        yearid
+)
+SELECT yearid, MAX(W) AS wins, ws_wins,
+CASE
+	WHEN ws_wins = MAX(W) THEN 1
+	ELSE 0
+	END AS most_wins_WS_win
 FROM teams
-WHERE yearid >= 1970 AND yearid <= 2016
-  AND WSWIN = 'Y'
-  AND W = (SELECT MAX(W) FROM teams WHERE yearid = teams.yearid AND WSWIN = 'Y');
+LEFT JOIN WS_max_wins
+USING (yearid)
+GROUP BY yearid, ws_wins
+HAVING yearid >= 1970 AND yearid != '1981' AND yearid !='1994'
+ORDER BY most_wins_ws_win DESC
+
+--Team with the most wins won the WS 26.6% of the time.
+
+--Script Percentage - Trying to get to show percentage:
+
+WITH WS_max_wins AS (
+    SELECT
+        yearid, 
+        MAX(W) AS ws_wins
+    FROM
+        teams
+    WHERE
+        WSWin = 'Y'
+    GROUP BY
+        yearid
+),
+most_wins_WS_win AS (
+SELECT yearid, MAX(W) AS wins,
+CASE
+	WHEN ws_wins = MAX(W) THEN 1
+	ELSE 0
+	END AS most_wins_WS_win
+FROM teams
+LEFT JOIN WS_max_wins
+USING (yearid)
+GROUP BY ws_wins, yearid
+)
+SELECT COUNT(*) as most_wins_count, count (*) * 100.0/sum(count(*)) over () as percent 
+FROM teams
+LEFT JOIN WS_max_wins
+USING (yearid)
+LEFT JOIN most_wins_WS_win
+USING (yearid)
+GROUP BY most_wins_WS_win
+HAVING yearid >= 1970 AND yearid != '1981' AND yearid !='1994'
+ORDER BY most_wins_ws_win DESC
+
+WITH WS_max_wins AS (
+    SELECT
+        teams.wswin,
+		yearid, 
+        MAX(W) AS ws_wins
+    FROM
+        teams
+    WHERE
+        WSWin = 'Y'
+    GROUP BY
+        yearid, wswin
+HAVING yearid >= 1970 AND yearid != '1981' AND yearid !='1994'
+),
+most_wins_WS_win AS (
+SELECT yearid, MAX(W) AS wins,
+CASE
+	WHEN ws_wins = MAX(W) THEN 1
+	ELSE 0
+	END AS most_wins_WS
+FROM teams
+LEFT JOIN WS_max_wins
+USING (yearid)
+GROUP BY ws_wins, yearid
+HAVING yearid >= 1970 AND yearid != '1981' AND yearid !='1994'
+),
+most_wins_did_not_win AS (
+SELECT yearid, MAX(W) AS wins,
+CASE
+	WHEN ws_wins != MAX(W) THEN 1
+	ELSE 0
+	END AS most_wins_did_not_winWS
+FROM teams
+LEFT JOIN WS_max_wins
+USING (yearid)
+GROUP BY ws_wins, yearid
+HAVING yearid >= 1970 AND yearid != '1981' AND yearid !='1994'
+)
+SELECT SUM(most_wins_did_not_winWS + most_wins_ws) OVER (PARTITION BY ws_max_wins.wswin) AS total, SUM(most_wins_ws) OVER (PARTITION BY ws_max_wins.wswin) AS ws_win
+FROM WS_max_wins
+LEFT JOIN most_wins_WS_win
+USING (yearid)
+LEFT JOIN most_wins_did_not_win
+USING (yearid)
+
 
 --8. Using the attendance figures from the homegames table, find the teams and parks which had the top 5 average attendance per game in 2016 (where average attendance is defined as total attendance divided by number of games). Only consider parks where there were at least 10 games played. Report the park name, team name, and average attendance. Repeat for the lowest 5 average attendance.
 
@@ -248,23 +299,11 @@ LEFT JOIN
 ON
     awardsmanagers.playerid = AL_Wins.playerid
 GROUP BY awardsmanagers.playerid, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid, nl_wins.nl_count, al_wins.al_count
-HAVING awardid LIKE 'TSN Manager of the Year' AND (awardsmanagers.lgid = 'NL' OR awardsmanagers.lgid = 'AL')
+HAVING awardid LIKE 'TSN Manager of the Year' AND (awardsmanagers.lgid = 'NL' OR awardsmanagers.lgid = 'AL') AND (NL_Wins.NL_count > 0 AND AL_Wins.AL_count > 0)
 ORDER BY wintype ASC
 
 --Answer: Davey Johnson	won both - won AL managing Baltimore Orioles and NL managing Washinton Nationals, Jim Leyland also won both, won AL managing Detroit Tigers and NL managing Pittsburgh Pirates.
 
-SELECT playerid, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid,
-FROM awardsmanagers
-LEFT JOIN managers
-USING (playerid, yearid)
-LEFT JOIN people
-USING (playerid)
-LEFT JOIN teams
-USING (teamid, yearid)
-GROUP BY playerid, namefirst, namelast, awardid, teamid, awardsmanagers.lgid, awardsmanagers.yearid, name, tie, franchid
-HAVING awardid LIKE 'TSN Manager of the Year' AND (awardsmanagers.lgid = 'NL' OR awardsmanagers.lgid = 'AL')
-ORDER BY playerid DESC
-						
 -- 10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
 
 WITH number_years AS 
@@ -277,9 +316,9 @@ WITH number_years AS
 homeruns_in_2016 AS
 (
 	SELECT playerid,
-	SUM(HR) AS hr_in_2016
+	MAX(HR) AS hr_in_2016
 	FROM batting
-	WHERE yearid = '2016' AND HR > 1
+	WHERE yearid = '2016' AND HR >= 1
 	GROUP BY playerid
 ),
 homeruns_pre_2016 AS
@@ -290,7 +329,7 @@ homeruns_pre_2016 AS
 	WHERE yearid < 2016
 	GROUP BY playerid
 )
-SELECT playerid, namefirst, namelast, appearances.yearid, hr, distinct_years, max_hr_pre_2016, hr_in_2016
+SELECT playerid, namefirst, namelast, appearances.yearid, distinct_years, max_hr_pre_2016, hr_in_2016
 FROM batting
 LEFT JOIN people
 USING (playerid)
@@ -302,11 +341,18 @@ LEFT JOIN homeruns_in_2016
 USING (playerid)
 LEFT JOIN homeruns_pre_2016
 USING (playerid)
-WHERE distinct_years >= 10 AND hr_in_2016 IS NOT NULL AND (hr_in_2016 > max_hr_pre_2016) AND yearid = 2016
-GROUP BY playerid, namefirst, namelast, appearances.yearid, hr, distinct_years, max_hr_pre_2016, hr_in_2016
+WHERE distinct_years >= 10 AND hr_in_2016 IS NOT NULL AND (hr_in_2016 >= max_hr_pre_2016) AND yearid = 2016
+GROUP BY playerid, namefirst, namelast, appearances.yearid, distinct_years, max_hr_pre_2016, hr_in_2016
 ORDER BY playerid DESC
 
-/*Answer: *Angel Pagan: 12 HR in 2016
+/*Answer:
+
+Adam Wainwright: 2 HR in 2016
+Justin Upton: 31 HR in 2016
+Angel Pagan: 12 HR in 2016
 Mike Napoli: 34 HR in 2016
+Francisco Liriano: 1 HR in 2016
+Edwin Encarnacion: 1 HR in 2016
 Rajai Davis: 12 HR in 2016
+Bartolo Colon: 1 HR in 2016
 Robinson Cano: 39 HR in 2016
